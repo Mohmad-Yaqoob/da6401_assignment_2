@@ -325,7 +325,10 @@ class OxfordPetsDataset(Dataset):
         # the same geometric augmentation seed. For simplicity we keep
         # both transforms independent — if you want joint aug, pass mask
         # into the img_transform pipeline too (albumentations supports it).
-        mask_tensor = torch.from_numpy(seg_out["mask"]).long()  # (H, W)
+        # mask_tensor = torch.from_numpy(seg_out["mask"]).long()  # (H, W)
+        # fixed
+        raw_mask = seg_out["mask"]
+        mask_tensor = raw_mask.long() if isinstance(raw_mask, torch.Tensor) else torch.from_numpy(raw_mask).long()
 
         return {
             "image":    image_tensor,              # (3, 224, 224) float

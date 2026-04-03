@@ -319,22 +319,21 @@ class OxfordPetsDataset(Dataset):
             bbox_tensor = torch.tensor([0.5, 0.5, 1.0, 1.0], dtype=torch.float32)
 
         # ── segmentation mask ──────────────────────────────────────────────
+        # segmentation mask
         mask_np = self._load_mask(name)
         seg_out = self.seg_transform(image=img_np, mask=mask_np)
-        # note: we use the original img_np here so mask aligns with
-        # the same geometric augmentation seed. For simplicity we keep
-        # both transforms independent — if you want joint aug, pass mask
-        # into the img_transform pipeline too (albumentations supports it).
-        # mask_tensor = torch.from_numpy(seg_out["mask"]).long()  # (H, W)
-        # fixed
-        raw_mask = seg_out["mask"]
-        mask_tensor = raw_mask.long() if isinstance(raw_mask, torch.Tensor) else torch.from_numpy(raw_mask).long()
+
+        seg_mask = seg_out["mask"]
+        if isinstance(seg_mask, torch.Tensor):
+            mask_tensor = seg_mask.long()
+        else:
+            mask_tensor = torch.from_numpy(np.array(seg_mask)).long()
 
         return {
-            "image":    image_tensor,              # (3, 224, 224) float
-            "label":    torch.tensor(class_id, dtype=torch.long),  # scalar
-            "bbox":     bbox_tensor,               # (4,) float [cx,cy,w,h] normalised
-            "mask":     mask_tensor,               # (224, 224) long {0,1,2}
+            "image":    image_tensor,
+            "label":    torch.tensor(class_id, dtype=torch.long),
+            "bbox":     bbox_tensor,
+            "mask":     mask_tensor,
             "name":     name,
         }
 

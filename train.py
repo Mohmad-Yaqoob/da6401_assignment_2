@@ -278,14 +278,14 @@ def train_seg(args):
             tl += loss.item(); td += dice(out.detach(), masks)
 
         model.eval()
-        vl, vd, va = 0.0, 0.0, 0.0
+        vl, vd, vacc = 0.0, 0.0, 0.0
         with torch.no_grad():
             for b in va:
                 imgs, masks = b["image"].to(device), b["mask"].to(device)
                 out  = model(imgs)
                 vl  += crit(out, masks).item()
                 vd  += dice(out, masks)
-                va  += (out.argmax(1) == masks).float().mean().item()
+                vacc += (out.argmax(1) == masks).float().mean().item()
 
         n_tr, n_va = len(tr), len(va)
         sched.step()
@@ -293,10 +293,10 @@ def train_seg(args):
         wandb.log({"epoch": ep, "lr": sched.get_last_lr()[0],
                    "train/loss": tl/n_tr, "train/dice": td/n_tr,
                    "val/loss": vl/n_va,   "val/dice":   vd/n_va,
-                   "val/pixel_acc": va/n_va}, step=ep)
+                   "val/pixel_acc": vacc/n_va}, step=ep)
 
         print(f"ep {ep:03d}/{args.epochs} | "
-              f"dice {td/n_tr:.4f} | val_dice {vd/n_va:.4f} acc {va/n_va:.4f}")
+              f"dice {td/n_tr:.4f} | val_dice {vd/n_va:.4f} acc {vacc/n_va:.4f}")
 
         if vd/n_va > best:
             best = vd/n_va

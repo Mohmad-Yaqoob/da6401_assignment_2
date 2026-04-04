@@ -48,9 +48,9 @@ class MultiTaskPerceptionModel(nn.Module):
 
         # ── download checkpoints from Google Drive ──────────────────────────
         import gdown
-        gdown.download(id="CLASSIFIER_DRIVE_ID", output=classifier_path, quiet=False)
-        gdown.download(id="LOCALIZER_DRIVE_ID",  output=localizer_path,  quiet=False)
-        gdown.download(id="UNET_DRIVE_ID",       output=unet_path,       quiet=False)
+        gdown.download(id="12y80gUwOj8A6B8fFtKbxfFbRZ_MwQ42D", output=classifier_path, quiet=False)
+        gdown.download(id="1Cr6GcGK5J4BaN_UrzV8qXQEpgyBHCWYb",  output=localizer_path,  quiet=False)
+        gdown.download(id="1Md1Us2SN26Imu_zmO1O3zuUsUyI6fun0",   output=unet_path,       quiet=False)
 
         # ── shared VGG11 backbone ───────────────────────────────────────────
         backbone = VGG11(num_classes=num_classes, dropout_p=dropout_p)

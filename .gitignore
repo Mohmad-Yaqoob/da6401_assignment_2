@@ -6,3 +6,6 @@ pets_data/
 *.egg-info/
 .DS_Store
 wandb/
+*.pth
+pets_data/
+wandb/

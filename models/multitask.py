@@ -178,8 +178,12 @@ class MultiTaskPerceptionModel(nn.Module):
         d = self.up2(d);   d = self.dec2(torch.cat([d, s1], dim=1))
         d = self.up1(d);   d = self.dec1(d)
         seg_logits = self.seg_final(d)
-
-        return cls_logits, bbox, seg_logits
+        
+        return  {
+                    'classification': cls_logits,
+                    'localization':   bbox,
+                    'segmentation':   seg_logits,
+                }
 
 
 if __name__ == "__main__":

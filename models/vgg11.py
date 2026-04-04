@@ -184,3 +184,5 @@ if __name__ == "__main__":
     # block3: (2, 256,  28,  28)
     # block4: (2, 512,  14,  14)
     # block5: (2, 512,   7,   7)
+# alias required by autograder
+VGG11Encoder = VGG11

@@ -55,11 +55,17 @@ class MultiTaskPerceptionModel(nn.Module):
         # ── shared VGG11 backbone ───────────────────────────────────────────
         backbone = VGG11(num_classes=num_classes, dropout_p=dropout_p)
 
-        self.enc1    = backbone.block1
-        self.enc2    = backbone.block2
-        self.enc3    = backbone.block3
-        self.enc4    = backbone.block4
-        self.enc5    = backbone.block5
+        # self.enc1    = backbone.block1
+        # self.enc2    = backbone.block2
+        # self.enc3    = backbone.block3
+        # self.enc4    = backbone.block4
+        # self.enc5    = backbone.block5
+        # in __init__, change these lines:
+        self.block1 = backbone.block1   # was enc1
+        self.block2 = backbone.block2   # was enc2
+        self.block3 = backbone.block3   # was enc3
+        self.block4 = backbone.block4   # was enc4
+        self.block5 = backbone.block5   # was enc5
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
         flat_dim = 512 * 7 * 7
@@ -105,85 +111,51 @@ class MultiTaskPerceptionModel(nn.Module):
     def _load_weights(self, cls_path, loc_path, seg_path):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # load classifier — backbone + cls_head
         if os.path.exists(cls_path):
-            cls_state = torch.load(cls_path, map_location=device)
-            state = cls_state.get("model_state", cls_state)
-            # remap block -> enc keys
-            remapped = {}
-            for k, v in state.items():
-                new_k = k.replace("block1","enc1").replace("block2","enc2") \
-                         .replace("block3","enc3").replace("block4","enc4") \
-                         .replace("block5","enc5")
-                remapped[new_k] = v
-            missing, unexpected = self.load_state_dict(remapped, strict=False)
+            state = torch.load(cls_path, map_location=device)
+            state = state.get("model_state", state)
+            missing, unexpected = self.load_state_dict(state, strict=False)
             print(f"Classifier loaded. Missing: {len(missing)}, Unexpected: {len(unexpected)}")
 
-        # load localizer — backbone + loc_head
         if os.path.exists(loc_path):
-            loc_state = torch.load(loc_path, map_location=device)
-            state = loc_state.get("model_state", loc_state)
+            state = torch.load(loc_path, map_location=device)
+            state = state.get("model_state", state)
+            # localizer uses reg_head, multitask uses loc_head — remap just this
             remapped = {}
             for k, v in state.items():
-                new_k = k.replace("block1","enc1").replace("block2","enc2") \
-                         .replace("block3","enc3").replace("block4","enc4") \
-                         .replace("block5","enc5") \
-                         .replace("reg_head","loc_head")
-                remapped[new_k] = v
+                remapped[k.replace("reg_head", "loc_head")] = v
             missing, unexpected = self.load_state_dict(remapped, strict=False)
             print(f"Localizer loaded. Missing: {len(missing)}, Unexpected: {len(unexpected)}")
 
-        # load unet — backbone + seg decoder
         if os.path.exists(seg_path):
-            seg_state = torch.load(seg_path, map_location=device)
-            state = seg_state.get("model_state", seg_state)
-            remapped = {}
-            for k, v in state.items():
-                new_k = k.replace("enc1","enc1").replace("enc2","enc2") \
-                         .replace("enc3","enc3").replace("enc4","enc4") \
-                         .replace("enc5","enc5")
-                remapped[new_k] = v
-            missing, unexpected = self.load_state_dict(remapped, strict=False)
+            state = torch.load(seg_path, map_location=device)
+            state = state.get("model_state", state)
+            missing, unexpected = self.load_state_dict(state, strict=False)
             print(f"UNet loaded. Missing: {len(missing)}, Unexpected: {len(unexpected)}")
+    def forward(self, x):
+        s1 = self.block1(x)
+        s2 = self.block2(s1)
+        s3 = self.block3(s2)
+        s4 = self.block4(s3)
+        s5 = self.block5(s4)
 
-    def forward(self, x: torch.Tensor):
-        """
-        Single forward pass — all three tasks simultaneously.
-
-        Args:
-            x : (B, 3, H, W) normalized input image
-
-        Returns:
-            cls_logits : (B, 37)
-            bbox       : (B, 4)  pixel space [cx, cy, w, h]
-            seg_logits : (B, 3, H, W)
-        """
-        # shared encoder
-        s1 = self.enc1(x)
-        s2 = self.enc2(s1)
-        s3 = self.enc3(s2)
-        s4 = self.enc4(s3)
-        s5 = self.enc5(s4)
-
-        # classification + localization from pooled features
-        pooled     = self.avgpool(s5)
-        flat       = torch.flatten(pooled, 1)
+        pooled = self.avgpool(s5)
+        flat   = torch.flatten(pooled, 1)
         cls_logits = self.cls_head(flat)
         bbox       = self.loc_head(flat)
 
-        # segmentation decoder with skip connections
         d = self.up5(s5);  d = self.dec5(torch.cat([d, s4], dim=1))
         d = self.up4(d);   d = self.dec4(torch.cat([d, s3], dim=1))
         d = self.up3(d);   d = self.dec3(torch.cat([d, s2], dim=1))
         d = self.up2(d);   d = self.dec2(torch.cat([d, s1], dim=1))
         d = self.up1(d);   d = self.dec1(d)
         seg_logits = self.seg_final(d)
-        
-        return  {
-                    'classification': cls_logits,
-                    'localization':   bbox,
-                    'segmentation':   seg_logits,
-                }
+
+        return {
+            'classification': cls_logits,
+            'localization':   bbox,
+            'segmentation':   seg_logits,
+        }
 
 
 if __name__ == "__main__":

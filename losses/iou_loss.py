@@ -3,59 +3,42 @@ import torch.nn as nn
 
 
 class IoULoss(nn.Module):
-    """
-    Custom IoU Loss for bounding box regression.
+    # IoU-based regression loss for axis-aligned bounding boxes
+    # input format: [cx, cy, w, h] in pixel space
+    # output range: [0, 1] — 0 = perfect overlap, 1 = no overlap
 
-    Inputs: [x_center, y_center, width, height] in pixel space
-    Loss range: [0, 1]  — 0 means perfect overlap, 1 means no overlap
-
-    Supported reductions: "mean" (default), "sum", "none"
-    """
-
-    def __init__(self, reduction: str = "mean", eps: float = 1e-6):
+    def __init__(self, eps: float = 1e-6, reduction: str = "mean"):
         super().__init__()
         assert reduction in ("mean", "sum", "none"), \
             f"reduction must be mean/sum/none, got '{reduction}'"
-        self.reduction = reduction
         self.eps = eps
+        self.reduction = reduction
 
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            pred   : (N, 4) predicted   [cx, cy, w, h] pixel space
-            target : (N, 4) ground truth [cx, cy, w, h] pixel space
-        Returns:
-            scalar if reduction mean/sum, else (N,) tensor
-        """
-        # [cx,cy,w,h] -> [x1,y1,x2,y2]
-        pred_x1 = pred[:, 0] - pred[:, 2] / 2
-        pred_y1 = pred[:, 1] - pred[:, 3] / 2
-        pred_x2 = pred[:, 0] + pred[:, 2] / 2
-        pred_y2 = pred[:, 1] + pred[:, 3] / 2
+    def forward(self, pred_boxes: torch.Tensor, target_boxes: torch.Tensor) -> torch.Tensor:
+        # unpack cx,cy,w,h -> corners
+        px1 = pred_boxes[:, 0] - pred_boxes[:, 2] / 2
+        py1 = pred_boxes[:, 1] - pred_boxes[:, 3] / 2
+        px2 = pred_boxes[:, 0] + pred_boxes[:, 2] / 2
+        py2 = pred_boxes[:, 1] + pred_boxes[:, 3] / 2
 
-        tgt_x1  = target[:, 0] - target[:, 2] / 2
-        tgt_y1  = target[:, 1] - target[:, 3] / 2
-        tgt_x2  = target[:, 0] + target[:, 2] / 2
-        tgt_y2  = target[:, 1] + target[:, 3] / 2
+        tx1 = target_boxes[:, 0] - target_boxes[:, 2] / 2
+        ty1 = target_boxes[:, 1] - target_boxes[:, 3] / 2
+        tx2 = target_boxes[:, 0] + target_boxes[:, 2] / 2
+        ty2 = target_boxes[:, 1] + target_boxes[:, 3] / 2
 
-        # intersection
-        inter_w    = (torch.min(pred_x2, tgt_x2) - torch.max(pred_x1, tgt_x1)).clamp(min=0)
-        inter_h    = (torch.min(pred_y2, tgt_y2) - torch.max(pred_y1, tgt_y1)).clamp(min=0)
-        inter_area = inter_w * inter_h
+        inter_w = (torch.min(px2, tx2) - torch.max(px1, tx1)).clamp(0)
+        inter_h = (torch.min(py2, ty2) - torch.max(py1, ty1)).clamp(0)
+        inter   = inter_w * inter_h
 
-        # areas
-        pred_area   = (pred_x2 - pred_x1).clamp(min=0) * (pred_y2 - pred_y1).clamp(min=0)
-        target_area = (tgt_x2  - tgt_x1).clamp(min=0)  * (tgt_y2  - tgt_y1).clamp(min=0)
-        union_area  = pred_area + target_area - inter_area
+        area_p = (px2 - px1).clamp(0) * (py2 - py1).clamp(0)
+        area_t = (tx2 - tx1).clamp(0) * (ty2 - ty1).clamp(0)
+        union  = area_p + area_t - inter
 
-        iou  = inter_area / (union_area + self.eps)   # [0, 1]
-        loss = 1.0 - iou                               # [0, 1]
+        iou  = inter / (union + self.eps)
+        loss = 1.0 - iou
 
         if self.reduction == "mean":
             return loss.mean()
-        elif self.reduction == "sum":
+        if self.reduction == "sum":
             return loss.sum()
         return loss
-
-    def extra_repr(self):
-        return f"reduction={self.reduction}"

@@ -1,3 +1,3 @@
-from losses.iou_loss import IoULoss
-
+from .iou_loss import IoULoss
+ 
 __all__ = ["IoULoss"]

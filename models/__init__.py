@@ -1,13 +1,15 @@
-from models.layers import CustomDropout
-from models.vgg11 import VGG11
-from models.localization import LocalizationModel
-from models.segmentation import SegmentationModel
-from models.multitask import MultiTaskPerceptionModel
+from .layers import CustomDropout
+from .vgg11 import VGG11Encoder
+from .classification import VGG11Classifier
+from .localization import VGG11Localizer
+from .segmentation import VGG11UNet
+from .multitask import MultiTaskPerceptionModel
 
 __all__ = [
     "CustomDropout",
-    "VGG11",
-    "LocalizationModel",
-    "SegmentationModel",
+    "VGG11Encoder",
+    "VGG11Classifier",
+    "VGG11Localizer",
+    "VGG11UNet",
     "MultiTaskPerceptionModel",
 ]

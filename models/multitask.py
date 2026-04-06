@@ -30,9 +30,9 @@ class MultiTaskPerceptionModel(nn.Module):
 
         # ✅ Download weights
         import gdown
-        gdown.download(id="1xMkysGkoT_TYMD9iPYsPCfGWxQtodHVE", output=classifier_path, quiet=False)
-        gdown.download(id="1S3Pe-tl8HBEHLwUNtapJnTofOkcCC4qo", output=localizer_path, quiet=False)
-        gdown.download(id="1sRH9iLKIjZ5VijGllOYQFlN1KiNSPXuo", output=unet_path, quiet=False)
+        gdown.download(id="1n85YO1B-IRm9GFq2L--RfjsMsOuRo9I8", output=classifier_path, quiet=False)
+        gdown.download(id="1rMfun1L2hs2nq1QKF8Pd7p-HeBiGVdKk", output=localizer_path, quiet=False)
+        gdown.download(id="1-bt2g5vfxKMEN5hsbmTf4WERiSHhtXfu", output=unet_path, quiet=False)
 
         # ✅ Encoder
         self.encoder = VGG11Encoder(in_channels=in_channels)
@@ -128,12 +128,13 @@ class MultiTaskPerceptionModel(nn.Module):
         cls = self.cls_head(flat)
 
         # Localization
-        loc_raw = self.loc_head(flat)
-        cx = torch.sigmoid(loc_raw[:, 0]) * 224
-        cy = torch.sigmoid(loc_raw[:, 1]) * 224
-        w  = torch.sigmoid(loc_raw[:, 2]) * 224
-        h  = torch.sigmoid(loc_raw[:, 3]) * 224
-        loc = torch.stack([cx, cy, w, h], dim=1)
+        # loc_raw = self.loc_head(flat)
+        # cx = torch.sigmoid(loc_raw[:, 0]) * 224
+        # cy = torch.sigmoid(loc_raw[:, 1]) * 224
+        # w  = torch.sigmoid(loc_raw[:, 2]) * 224
+        # h  = torch.sigmoid(loc_raw[:, 3]) * 224
+        # loc = torch.stack([cx, cy, w, h], dim=1)
+        loc = self.loc_head(flat)
 
         # Segmentation
         d = self.up5(s5);  d = self.dec5(torch.cat([d, s4], 1))

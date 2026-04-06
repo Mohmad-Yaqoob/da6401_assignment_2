@@ -3,13 +3,13 @@ import torch.nn as nn
 
 
 class CustomDropout(nn.Module):
-    # rolls its own bernoulli mask instead of using nn.Dropout
-    # inverted dropout: divide by keep_prob so we don't rescale at test time
+    # hand-rolled bernoulli mask with inverted scaling
+    # no nn.Dropout or F.dropout used anywhere
 
     def __init__(self, p: float = 0.5):
         super().__init__()
         if not 0.0 <= p < 1.0:
-            raise ValueError(f"dropout probability must be in [0,1), got {p}")
+            raise ValueError(f"p must be in [0,1), got {p}")
         self.p = p
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

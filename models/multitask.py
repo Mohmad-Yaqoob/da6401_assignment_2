@@ -134,7 +134,10 @@ class MultiTaskPerceptionModel(nn.Module):
         # w  = torch.sigmoid(loc_raw[:, 2]) * 224
         # h  = torch.sigmoid(loc_raw[:, 3]) * 224
         # loc = torch.stack([cx, cy, w, h], dim=1)
-        loc = self.loc_head(flat)
+        # loc = self.loc_head(flat)
+
+        loc_norm = torch.sigmoid(self.loc_head(flat))  # normalised 0-1
+        loc = loc_norm * 224  # convert to pixel space
 
         # Segmentation
         d = self.up5(s5);  d = self.dec5(torch.cat([d, s4], 1))

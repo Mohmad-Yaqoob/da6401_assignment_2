@@ -28,16 +28,20 @@ class VGG11Localizer(nn.Module):
                 nn.init.xavier_normal_(m.weight)
                 nn.init.zeros_(m.bias)
 
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    #     bottleneck = self.encoder(x, return_features=False)
+    #     flat = torch.flatten(bottleneck, 1)
+
+    #     loc = self.head(flat)
+
+    #     # ✅ Convert to valid bounding box format
+    #     cx = torch.sigmoid(loc[:, 0]) * 224
+    #     cy = torch.sigmoid(loc[:, 1]) * 224
+    #     w  = torch.sigmoid(loc[:, 2]) * 224
+    #     h  = torch.sigmoid(loc[:, 3]) * 224
+
+    #     return torch.stack([cx, cy, w, h], dim=1) 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         bottleneck = self.encoder(x, return_features=False)
         flat = torch.flatten(bottleneck, 1)
-
-        loc = self.head(flat)
-
-        # ✅ Convert to valid bounding box format
-        cx = torch.sigmoid(loc[:, 0]) * 224
-        cy = torch.sigmoid(loc[:, 1]) * 224
-        w  = torch.sigmoid(loc[:, 2]) * 224
-        h  = torch.sigmoid(loc[:, 3]) * 224
-
-        return torch.stack([cx, cy, w, h], dim=1)
+        return self.head(flat)   # raw output, no sigmoid

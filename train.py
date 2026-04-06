@@ -175,7 +175,9 @@ def train_loc(args):
             bboxes = b["bbox"].to(device) * IMG_SIZE  # normalised -> pixel
             opt.zero_grad()
             pred = model(imgs)
-            loss = mse_loss(pred, bboxes) + iou_loss(pred, bboxes)
+            # loss = mse_loss(pred, bboxes) + iou_loss(pred, bboxes)
+            smooth_l1 = nn.SmoothL1Loss()
+            loss = smooth_l1(pred, bboxes)
             loss.backward(); opt.step()
             tl += loss.item()
             ti += batch_iou(pred.detach(), bboxes)

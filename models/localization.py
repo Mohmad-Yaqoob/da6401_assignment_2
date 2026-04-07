@@ -1,31 +1,44 @@
 import torch
 import torch.nn as nn
-from models.vgg11 import VGG11Encoder
+
+from .vgg11 import VGG11Encoder, IMAGE_SIZE
+from .layers import CustomDropout
+
+_FLAT_DIM = 7 * 7 * 512
 
 
-class VGG11Localizer(nn.Module):
-    # predicts bounding box in pixel coordinates [cx, cy, w, h]
-    # all values in range 0-224 (pixel space, not normalised)
-    # trained with SmoothL1 loss on pixel targets
-    # sigmoid at output ensures values are bounded to (0, 224)
+class RegressionHead(nn.Module):
+    # predicts [cx, cy, w, h] in pixel space
+    # sigmoid at the end keeps all values in (0, IMAGE_SIZE)
+    # this prevents degenerate predictions like negative widths
 
-    def __init__(self, in_channels: int = 3, dropout_p: float = 0.5):
+    def __init__(self, dropout_p: float = 0.5):
         super().__init__()
-        self.encoder = VGG11Encoder(in_channels=in_channels)
         self.head = nn.Sequential(
-            nn.Linear(512 * 7 * 7, 1024), nn.ReLU(True),
-            nn.Dropout(p=dropout_p),
-            nn.Linear(1024, 256), nn.ReLU(True),
-            nn.Linear(256, 4),
-            # no activation here — sigmoid applied in forward for bounded output
+            nn.Flatten(),
+            nn.Linear(_FLAT_DIM, 1024),
+            nn.BatchNorm1d(1024),
+            nn.ReLU(inplace=True),
+            CustomDropout(p=dropout_p),
+            nn.Linear(1024, 4),
         )
         for m in self.head.modules():
             if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
+                nn.init.trunc_normal_(m.weight, std=0.01)
+                nn.init.zeros_(m.bias)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        flat = torch.flatten(self.encoder(x), 1)
-        # sigmoid keeps output in (0,1) then scale to pixel space (0,224)
-        # this guarantees valid pixel coordinates and stable training
-        return torch.sigmoid(self.head(flat)) * 224.0
+        return torch.sigmoid(self.head(x)) * IMAGE_SIZE
+
+
+class VGG11Localizer(nn.Module):
+    def __init__(self, in_channels: int = 3, dropout_p: float = 0.5):
+        super().__init__()
+        self.encoder = VGG11Encoder(in_channels=in_channels)
+        self.head    = RegressionHead(dropout_p=dropout_p)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.head(self.encoder(x, return_features=False))

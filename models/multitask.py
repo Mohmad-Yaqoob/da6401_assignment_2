@@ -1,15 +1,28 @@
 import os
+
 import torch
 import torch.nn as nn
-from models.vgg11 import VGG11Encoder
-from models.layers import CustomDropout
+
+from .vgg11 import VGG11Encoder
+from .classification import ClassificationHead
+from .localization import RegressionHead
+from .segmentation import DecoderBlock
+from .layers import CustomDropout
+
+# checkpoints live in the checkpoints/ subfolder by default
+_CKPT_DIR = "checkpoints"
 
 
-def _dec_block(in_ch, out_ch):
-    return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=False), nn.BatchNorm2d(out_ch), nn.ReLU(True),
-        nn.Conv2d(out_ch, out_ch, 3, padding=1, bias=False), nn.BatchNorm2d(out_ch), nn.ReLU(True),
-    )
+def _load_state(path: str, device: torch.device) -> dict:
+    ckpt = torch.load(path, map_location=device)
+    if isinstance(ckpt, dict) and "state_dict" in ckpt:
+        return ckpt["state_dict"]
+    return ckpt
+
+
+def _sub(sd: dict, prefix: str) -> dict:
+    # pull out keys starting with prefix and strip the prefix
+    return {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
 
 
 class MultiTaskPerceptionModel(nn.Module):
@@ -17,101 +30,97 @@ class MultiTaskPerceptionModel(nn.Module):
 
     def __init__(
         self,
-        num_breeds: int = 37,
-        seg_classes: int = 3,
-        in_channels: int = 3,
-        classifier_path: str = "classifier.pth",
-        localizer_path: str = "localizer.pth",
-        unet_path: str = "unet.pth",
+        num_breeds:       int = 37,
+        seg_classes:      int = 3,
+        in_channels:      int = 3,
+        classifier_path:  str = os.path.join(_CKPT_DIR, "classifier.pth"),
+        localizer_path:   str = os.path.join(_CKPT_DIR, "localizer.pth"),
+        unet_path:        str = os.path.join(_CKPT_DIR, "unet.pth"),
     ):
         import gdown
-        gdown.download(id="CLASSIFIER_ID", output=classifier_path, quiet=False)
-        gdown.download(id="LOCALIZER_ID",  output=localizer_path,  quiet=False)
-        gdown.download(id="UNET_ID",       output=unet_path,       quiet=False)
+        gdown.download(id="CLASSIFIER_DRIVE_ID", output=classifier_path, quiet=False)
+        gdown.download(id="LOCALIZER_DRIVE_ID",  output=localizer_path,  quiet=False)
+        gdown.download(id="UNET_DRIVE_ID",        output=unet_path,       quiet=False)
 
         super().__init__()
 
-        self.encoder = VGG11Encoder(in_channels=in_channels)
-        flat = 512 * 7 * 7
+        # three encoders — one per task
+        # keeping them separate avoids the feature mismatch that happens when
+        # a single shared encoder is loaded from one checkpoint but used with
+        # heads trained against a different encoder's output distribution
+        self.encoder_cls = VGG11Encoder(in_channels=in_channels)
+        self.encoder_loc = VGG11Encoder(in_channels=in_channels)
+        self.encoder_seg = VGG11Encoder(in_channels=in_channels)
 
-        self.cls_head = nn.Sequential(
-            nn.Linear(flat, 4096), nn.ReLU(True), CustomDropout(0.5),
-            nn.Linear(4096, 4096), nn.ReLU(True), CustomDropout(0.5),
-            nn.Linear(4096, num_breeds),
-        )
+        self.cls_head = ClassificationHead(num_classes=num_breeds, dropout_p=0.5)
+        self.loc_head = RegressionHead(dropout_p=0.5)
 
-        # localizer matches VGG11Localizer exactly
-        # sigmoid*224 in forward so output is pixel space 0-224
-        self.loc_head = nn.Sequential(
-            nn.Linear(flat, 1024), nn.ReLU(True),
-            nn.Dropout(0.5),
-            nn.Linear(1024, 256), nn.ReLU(True),
-            nn.Linear(256, 4),
-        )
+        self.dec5 = DecoderBlock(512, 512, 512)
+        self.dec4 = DecoderBlock(512, 512, 256)
+        self.dec3 = DecoderBlock(256, 256, 128)
+        self.dec2 = DecoderBlock(128, 128,  64)
+        self.dec1 = DecoderBlock( 64,  64,  32)
+        self.seg_dropout = CustomDropout(p=0.5)
+        self.seg_final   = nn.Conv2d(32, seg_classes, kernel_size=1)
 
-        # segmentation decoder matches VGG11UNet exactly
-        self.up5  = nn.ConvTranspose2d(512, 512, 2, stride=2); self.dec5 = _dec_block(1024, 512)
-        self.up4  = nn.ConvTranspose2d(512, 256, 2, stride=2); self.dec4 = _dec_block(512,  256)
-        self.up3  = nn.ConvTranspose2d(256, 128, 2, stride=2); self.dec3 = _dec_block(256,  128)
-        self.up2  = nn.ConvTranspose2d(128, 64,  2, stride=2); self.dec2 = _dec_block(128,  64)
-        self.up1  = nn.ConvTranspose2d(64,  32,  2, stride=2); self.dec1 = _dec_block(32,   32)
-        self.final = nn.Conv2d(32, seg_classes, 1)
+        self._load(classifier_path, localizer_path, unet_path)
 
-        self._load_weights(classifier_path, localizer_path, unet_path)
+    def _load(self, clf_path: str, loc_path: str, seg_path: str) -> None:
+        dev = torch.device("cpu")
 
-    def _load_weights(self, cls_path, loc_path, seg_path):
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if os.path.isfile(clf_path):
+            sd = _load_state(clf_path, dev)
+            self.encoder_cls.load_state_dict(_sub(sd, "encoder."), strict=False)
+            self.cls_head.load_state_dict(_sub(sd, "head."), strict=False)
+            print(f"[MultiTask] classifier loaded from '{clf_path}'")
+        else:
+            print(f"[MultiTask] WARNING: '{clf_path}' not found")
 
-        def get_state(path):
-            ckpt = torch.load(path, map_location=device)
-            if isinstance(ckpt, dict):
-                return ckpt.get("state_dict", ckpt.get("model_state", ckpt))
-            return ckpt
+        if os.path.isfile(loc_path):
+            sd = _load_state(loc_path, dev)
+            self.encoder_loc.load_state_dict(_sub(sd, "encoder."), strict=False)
+            self.loc_head.load_state_dict(_sub(sd, "head."), strict=False)
+            print(f"[MultiTask] localizer loaded from '{loc_path}'")
+        else:
+            print(f"[MultiTask] WARNING: '{loc_path}' not found")
 
-        merged = {}
+        if os.path.isfile(seg_path):
+            sd = _load_state(seg_path, dev)
+            self.encoder_seg.load_state_dict(_sub(sd, "encoder."), strict=False)
+            for name in ["dec5", "dec4", "dec3", "dec2", "dec1"]:
+                getattr(self, name).load_state_dict(_sub(sd, f"{name}."), strict=False)
+            fc_sd = _sub(sd, "final_conv.")
+            if fc_sd:
+                self.seg_final.load_state_dict(fc_sd, strict=False)
+            print(f"[MultiTask] unet loaded from '{seg_path}'")
+        else:
+            print(f"[MultiTask] WARNING: '{seg_path}' not found")
 
-        # unet — all keys match directly (encoder.* and decoder.*)
-        if os.path.exists(seg_path):
-            for k, v in get_state(seg_path).items():
-                merged[k] = v
+    def forward(self, x: torch.Tensor) -> dict:
+        """Forward pass for multi-task model.
 
-        # localizer — head.* -> loc_head.*
-        if os.path.exists(loc_path):
-            for k, v in get_state(loc_path).items():
-                merged[k.replace("head.", "loc_head.")] = v
-
-        # classifier — head.* -> cls_head.* (loaded last, encoder wins here)
-        if os.path.exists(cls_path):
-            for k, v in get_state(cls_path).items():
-                merged[k.replace("head.", "cls_head.")] = v
-
-        miss, unexp = self.load_state_dict(merged, strict=False)
-        print(f"loaded weights — missing: {len(miss)}, unexpected: {len(unexp)}")
-        if miss:
-            print("  missing:", miss[:3])
-
-    def forward(self, x: torch.Tensor):
+        Args:
+            x: Input tensor of shape [B, in_channels, H, W].
+        Returns:
+            A dict with keys:
+            - 'classification': [B, num_breeds] logits tensor.
+            - 'localization':   [B, 4] bounding box tensor.
+            - 'segmentation':   [B, seg_classes, H, W] segmentation logits tensor
         """
-        Returns dict with keys:
-          classification: [B, num_breeds]
-          localization:   [B, 4] in pixel space [cx, cy, w, h]
-          segmentation:   [B, seg_classes, H, W]
-        """
-        _, feats = self.encoder(x, return_features=True)
-        s1, s2, s3, s4, s5 = feats["block1"], feats["block2"], feats["block3"], feats["block4"], feats["block5"]
+        # each encoder runs independently — no weight sharing
+        cls_out = self.cls_head(self.encoder_cls(x, return_features=False))
+        loc_out = self.loc_head(self.encoder_loc(x, return_features=False))
 
-        flat = torch.flatten(nn.functional.adaptive_avg_pool2d(s5, (7, 7)), 1)
+        bn, feats = self.encoder_seg(x, return_features=True)
+        d = self.dec5(bn,         feats["b5"])
+        d = self.dec4(d,          feats["b4"])
+        d = self.dec3(d,          feats["b3"])
+        d = self.dec2(d,          feats["b2"])
+        d = self.dec1(d,          feats["b1"])
+        seg_out = self.seg_final(self.seg_dropout(d))
 
-        cls = self.cls_head(flat)
-
-        # sigmoid*224 matches VGG11Localizer exactly
-        loc = torch.sigmoid(self.loc_head(flat)) * 224.0
-
-        d = self.dec5(torch.cat([self.up5(s5), s4], 1))
-        d = self.dec4(torch.cat([self.up4(d),  s3], 1))
-        d = self.dec3(torch.cat([self.up3(d),  s2], 1))
-        d = self.dec2(torch.cat([self.up2(d),  s1], 1))
-        d = self.dec1(self.up1(d))
-        seg = self.final(d)
-
-        return {"classification": cls, "localization": loc, "segmentation": seg}
+        return {
+            "classification": cls_out,
+            "localization":   loc_out,
+            "segmentation":   seg_out,
+        }

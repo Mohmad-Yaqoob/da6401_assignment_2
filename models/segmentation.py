@@ -1,45 +1,69 @@
 import torch
 import torch.nn as nn
-from models.vgg11 import VGG11Encoder
+
+from .vgg11 import VGG11Encoder
+from .layers import CustomDropout
 
 
-def _dec_block(in_ch, out_ch):
+def _conv_bn_relu(in_ch: int, out_ch: int) -> nn.Sequential:
     return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=False), nn.BatchNorm2d(out_ch), nn.ReLU(True),
-        nn.Conv2d(out_ch, out_ch, 3, padding=1, bias=False), nn.BatchNorm2d(out_ch), nn.ReLU(True),
+        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
+        nn.BatchNorm2d(out_ch),
+        nn.ReLU(inplace=True),
     )
 
 
-class VGG11UNet(nn.Module):
-    # U-Net decoder mirroring VGG11 encoder
-    # skip connections from each block
-    # ConvTranspose2d only — no bilinear upsampling
+class DecoderBlock(nn.Module):
+    # upsample with ConvTranspose2d then concat skip and refine
+    # handles ±1 spatial mismatch from odd input sizes
 
+    def __init__(self, in_ch: int, skip_ch: int, out_ch: int):
+        super().__init__()
+        self.up   = nn.ConvTranspose2d(in_ch, in_ch, kernel_size=2, stride=2)
+        self.conv = nn.Sequential(
+            _conv_bn_relu(in_ch + skip_ch, out_ch),
+            _conv_bn_relu(out_ch, out_ch),
+        )
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        x = self.up(x)
+        if x.shape[2:] != skip.shape[2:]:
+            skip = skip[:, :, :x.shape[2], :x.shape[3]]
+        return self.conv(torch.cat([x, skip], dim=1))
+
+
+class VGG11UNet(nn.Module):
     def __init__(self, num_classes: int = 3, in_channels: int = 3, dropout_p: float = 0.5):
         super().__init__()
         self.encoder = VGG11Encoder(in_channels=in_channels)
-        self.up5  = nn.ConvTranspose2d(512, 512, 2, stride=2); self.dec5 = _dec_block(1024, 512)
-        self.up4  = nn.ConvTranspose2d(512, 256, 2, stride=2); self.dec4 = _dec_block(512,  256)
-        self.up3  = nn.ConvTranspose2d(256, 128, 2, stride=2); self.dec3 = _dec_block(256,  128)
-        self.up2  = nn.ConvTranspose2d(128, 64,  2, stride=2); self.dec2 = _dec_block(128,  64)
-        self.up1  = nn.ConvTranspose2d(64,  32,  2, stride=2); self.dec1 = _dec_block(32,   32)
-        self.final = nn.Conv2d(32, num_classes, 1)
+
+        # decoder mirrors encoder — each block doubles spatial dims
+        self.dec5 = DecoderBlock(512, 512, 512)   # 7  -> 14
+        self.dec4 = DecoderBlock(512, 512, 256)   # 14 -> 28
+        self.dec3 = DecoderBlock(256, 256, 128)   # 28 -> 56
+        self.dec2 = DecoderBlock(128, 128,  64)   # 56 -> 112
+        self.dec1 = DecoderBlock( 64,  64,  32)   # 112 -> 224
+
+        self.dropout    = CustomDropout(p=dropout_p)
+        self.final_conv = nn.Conv2d(32, num_classes, kernel_size=1)
+
         self._init_decoder()
 
-    def _init_decoder(self):
+    def _init_decoder(self) -> None:
         for m in self.modules():
             if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d)):
-                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
-                if m.bias is not None: nn.init.zeros_(m.bias)
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
             elif isinstance(m, nn.BatchNorm2d):
-                nn.init.ones_(m.weight); nn.init.zeros_(m.bias)
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        _, f = self.encoder(x, return_features=True)
-        s1, s2, s3, s4, s5 = f["block1"], f["block2"], f["block3"], f["block4"], f["block5"]
-        d = self.dec5(torch.cat([self.up5(s5), s4], 1))
-        d = self.dec4(torch.cat([self.up4(d),  s3], 1))
-        d = self.dec3(torch.cat([self.up3(d),  s2], 1))
-        d = self.dec2(torch.cat([self.up2(d),  s1], 1))
-        d = self.dec1(self.up1(d))
-        return self.final(d)
+        bottleneck, feats = self.encoder(x, return_features=True)
+        d = self.dec5(bottleneck,  feats["b5"])
+        d = self.dec4(d,           feats["b4"])
+        d = self.dec3(d,           feats["b3"])
+        d = self.dec2(d,           feats["b2"])
+        d = self.dec1(d,           feats["b1"])
+        return self.final_conv(self.dropout(d))

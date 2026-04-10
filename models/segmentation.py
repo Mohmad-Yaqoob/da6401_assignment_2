@@ -14,8 +14,8 @@ def _conv_bn_relu(in_ch: int, out_ch: int) -> nn.Sequential:
 
 
 class DecoderBlock(nn.Module):
-    # upsample with ConvTranspose2d then concat skip and refine
-    # handles ±1 spatial mismatch from odd input sizes
+# Upsamples using ConvTranspose2d, then joins with the skip connection and refines it.
+# Also takes care of small size mismatches (like off by 1) that happen with odd-sized inputs.
 
     def __init__(self, in_ch: int, skip_ch: int, out_ch: int):
         super().__init__()
@@ -37,7 +37,7 @@ class VGG11UNet(nn.Module):
         super().__init__()
         self.encoder = VGG11Encoder(in_channels=in_channels)
 
-        # decoder mirrors encoder — each block doubles spatial dims
+        # Decoder is basically the reverse of the encoder, each step doubles the spatial size.
         self.dec5 = DecoderBlock(512, 512, 512)   # 7  -> 14
         self.dec4 = DecoderBlock(512, 512, 256)   # 14 -> 28
         self.dec3 = DecoderBlock(256, 256, 128)   # 28 -> 56

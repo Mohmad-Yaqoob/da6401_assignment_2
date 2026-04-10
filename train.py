@@ -1,11 +1,9 @@
-"""
-Training script for DA6401 Assignment 2.
+# Training script for DA6401 Assignment 2.
 
-Usage:
-    python train.py --task classification --epochs 60 --lr 5e-4
-    python train.py --task localization   --epochs 40 --lr 5e-4
-    python train.py --task segmentation   --epochs 40 --lr 5e-4
-"""
+# Usage:
+#   python train.py --task classification --epochs 60 --lr 5e-4  
+#   python train.py --task localization   --epochs 40 --lr 5e-4  
+#   python train.py --task segmentation   --epochs 40 --lr 5e-4
 
 import argparse
 import numpy as np
@@ -156,7 +154,7 @@ def make_sched(opt, warmup, total):
         milestones=[warmup])
 
 
-# ── Task 1 ─────────────────────────────────────────────────────────────────
+# Task 1
 
 def train_classification(args):
     wandb.init(project=args.wandb_project, name="classification", config=vars(args))
@@ -221,7 +219,7 @@ def train_classification(args):
     print(f"Best val F1: {best:.4f}")
 
 
-# ── Task 2 ─────────────────────────────────────────────────────────────────
+# Task 2
 
 def train_localization(args):
     wandb.init(project=args.wandb_project, name="localization", config=vars(args))
@@ -303,7 +301,7 @@ def train_localization(args):
     print(f"Best val IoU: {best:.4f}")
 
 
-# ── Task 3 ─────────────────────────────────────────────────────────────────
+# Task 3
 
 def train_segmentation(args):
     wandb.init(project=args.wandb_project, name="segmentation", config=vars(args))
@@ -389,7 +387,7 @@ def train_segmentation(args):
     print(f"Best val Dice: {best:.4f}")
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────────
+# CLI
 
 def parse_args():
     p = argparse.ArgumentParser()

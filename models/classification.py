@@ -7,11 +7,11 @@ from .layers import CustomDropout
 _FLAT_DIM = 7 * 7 * 512   # bottleneck size for 224x224 input
 
 
+# Three-layer fully connected head applied on the flattened bottleneck.
+# BatchNorm1d is used before dropout, so it can see the full feature distribution first.
+# Dropout is added to reduce co-adaptation between neurons in the FC layers.
 class ClassificationHead(nn.Module):
-    # three-layer FC head on the flattened bottleneck
-    # BN1d before dropout so normalisation sees the full distribution first
-    # dropout prevents co-adaptation of FC neurons
-
+    
     def __init__(self, num_classes: int = 37, dropout_p: float = 0.5):
         super().__init__()
         self.classifier = nn.Sequential(

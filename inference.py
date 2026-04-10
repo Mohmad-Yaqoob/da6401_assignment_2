@@ -1,9 +1,7 @@
-"""
-inference.py — run the full multi-task pipeline on a single image.
+# inference.py: runs the full multi-task model on a single image.
 
-Usage:
-    python inference.py --image path/to/pet.jpg --ckpt checkpoints/best_multitask.pth
-"""
+# Usage:
+# python inference.py --image path/to/pet.jpg --ckpt checkpoints/best_multitask.pth
 
 import argparse
 import numpy as np

@@ -18,8 +18,8 @@ MEAN     = (0.485, 0.456, 0.406)
 STD      = (0.229, 0.224, 0.225)
 
 
+# heavy augmentation like scale, colour, noise, coarse dropout
 def _train_tfm() -> A.Compose:
-    # heavy augmentation — scale, colour, noise, coarse dropout
     return A.Compose([
         A.RandomResizedCrop(size=(IMG_SIZE, IMG_SIZE), scale=(0.5, 1.0),
                             ratio=(0.75, 1.33), p=1.0),
@@ -37,8 +37,7 @@ def _train_tfm() -> A.Compose:
                                 min_visibility=0.2))
 
 
-def _val_tfm() -> A.Compose:
-    # plain resize — no padding artefacts
+def _val_tfm() -> A.Compose:            # plain resizing
     return A.Compose([
         A.Resize(IMG_SIZE, IMG_SIZE),
         A.Normalize(mean=MEAN, std=STD),
@@ -47,19 +46,24 @@ def _val_tfm() -> A.Compose:
                                 label_fields=["bbox_labels"],
                                 min_visibility=0.1))
 
+# Oxford-IIIT Pet dataset loader used for classification, localisation, and segmentation tasks.
 
+# The mode basically decides what kind of data you get:
+#   cls → just image and label  
+#   loc → image, label, and bounding box (from XML)  
+#   seg → image, label, and segmentation mask  
+#   all → everything (image, label, bbox, mask)
+
+# Bounding boxes are returned as [x1, y1, x2, y2] in pixel format (Pascal VOC style).
+
+# Masks are given as:
+#   0 = foreground  
+#   1 = background  
+#   2 = boundary  
+
+# Returned as a long tensor.
 class OxfordIIITPetDataset(Dataset):
-    """Oxford-IIIT Pet loader for classification, localisation and segmentation.
-
-    Mode controls which annotations are required:
-      'cls' — image + label only
-      'loc' — image + label + XML bbox
-      'seg' — image + label + trimap mask
-      'all' — image + label + bbox + mask
-
-    Bbox output: [x1, y1, x2, y2] in pixel space (pascal_voc format).
-    Mask output: {0=foreground, 1=background, 2=boundary} as long tensor.
-    """
+   
 
     def __init__(
         self,

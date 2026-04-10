@@ -5,12 +5,12 @@ import torch.nn as nn
 
 from .layers import CustomDropout
 
-# VGG11 paper uses 224x224 input, giving a 7x7 feature map after 5 maxpool layers
+# VGG11 usually takes 224×224 images, which end up as a 7×7 feature map after the 5 max-pooling layers.
 IMAGE_SIZE = 224
 
-
+# 3×3 conv with padding=1, so the size stays the same.  
+# BatchNorm is applied before ReLU.
 def _conv_bn_relu(in_ch: int, out_ch: int) -> nn.Sequential:
-    # 3x3 conv with padding=1 keeps spatial dims, BN before ReLU
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
         nn.BatchNorm2d(out_ch),
@@ -18,10 +18,9 @@ def _conv_bn_relu(in_ch: int, out_ch: int) -> nn.Sequential:
     )
 
 
+# VGG11 backbone, mostly following the original paper.
+# Blocks are kept separate from pooling, so skip connections can use the higher-resolution features (before pooling).
 class VGG11Encoder(nn.Module):
-    # VGG11 backbone following the original paper topology
-    # blocks separated from pooling so skip connections land at pre-pool resolution
-
     def __init__(self, in_channels: int = 3):
         super().__init__()
 
@@ -57,7 +56,8 @@ class VGG11Encoder(nn.Module):
         x: torch.Tensor,
         return_features: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, Dict[str, torch.Tensor]]]:
-        # run each block then pool, saving pre-pool maps for skip connections
+        # Each block runs first, then pooling is applied.  
+        # The feature maps before pooling are saved for skip connections.
         f1 = self.block1(x);       p1 = self.pool1(f1)
         f2 = self.block2(p1);      p2 = self.pool2(f2)
         f3 = self.block3(p2);      p3 = self.pool3(f3)

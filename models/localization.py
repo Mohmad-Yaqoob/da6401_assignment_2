@@ -6,11 +6,10 @@ from .layers import CustomDropout
 
 _FLAT_DIM = 7 * 7 * 512
 
-
+# Predicts bounding boxes in [cx, cy, w, h] format in pixel space.
+# A sigmoid is applied at the end so the values stay within the image range (0 to IMAGE_SIZE).
+# This helps avoid weird cases like negative width or height in predictions.
 class RegressionHead(nn.Module):
-    # predicts [cx, cy, w, h] in pixel space
-    # sigmoid at the end keeps all values in (0, IMAGE_SIZE)
-    # this prevents degenerate predictions like negative widths
 
     def __init__(self, dropout_p: float = 0.5):
         super().__init__()

@@ -2,10 +2,12 @@ import torch
 import torch.nn as nn
 
 
+# IoU-based regression loss for bounding boxes in cx, cy, w, h format.
+
+# The loss is defined as 1 - IoU, so it always stays between 0 and 1.
+
+# Supports different reduction types: mean (default), sum, or none.
 class IoULoss(nn.Module):
-    # IoU-based regression loss for cxcywh boxes
-    # loss = 1 - IoU, so range is always [0, 1]
-    # supports mean (default), sum, and none reductions
 
     _VALID = {"mean", "sum", "none"}
 

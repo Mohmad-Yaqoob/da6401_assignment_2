@@ -9,7 +9,6 @@ from .localization import RegressionHead
 from .segmentation import DecoderBlock
 from .layers import CustomDropout
 
-# checkpoints live in the checkpoints/ subfolder by default
 _CKPT_DIR = "checkpoints"
 
 
@@ -38,16 +37,15 @@ class MultiTaskPerceptionModel(nn.Module):
         unet_path:        str = os.path.join(_CKPT_DIR, "unet.pth"),
     ):
         import gdown
-        gdown.download(id="CLASSIFIER_DRIVE_ID", output=classifier_path, quiet=False)
-        gdown.download(id="LOCALIZER_DRIVE_ID",  output=localizer_path,  quiet=False)
-        gdown.download(id="UNET_DRIVE_ID",        output=unet_path,       quiet=False)
+        gdown.download(id="1QEt6Fu5PY3fMl9Nt9aILsuVTRFfF30w9", output=classifier_path, quiet=False)
+        
+        gdown.download(id="10aQRKb0sNWXYWqBdyhYXEKq08RkBwMoa",  output=localizer_path,  quiet=False)
+        gdown.download(id="1AXWmwsHtWMQOxzlPqCUM_UMvpuaZAJp3",        output=unet_path,       quiet=False)
 
         super().__init__()
 
-        # three encoders — one per task
-        # keeping them separate avoids the feature mismatch that happens when
-        # a single shared encoder is loaded from one checkpoint but used with
-        # heads trained against a different encoder's output distribution
+        # Using three separate encoders, one for each task.
+        # Keeping them separate helps avoid feature mismatch issues. That usually happens when a single encoder is reused from one checkpoint, but the heads were trained with a different feature distribution.
         self.encoder_cls = VGG11Encoder(in_channels=in_channels)
         self.encoder_loc = VGG11Encoder(in_channels=in_channels)
         self.encoder_seg = VGG11Encoder(in_channels=in_channels)
@@ -96,18 +94,16 @@ class MultiTaskPerceptionModel(nn.Module):
         else:
             print(f"[MultiTask] WARNING: '{seg_path}' not found")
 
+# Forward pass of the multi-task model.
+# Input:
+#   x → [B, C, H, W]
+# Output:
+#   - classification → [B, num_breeds]
+#   - localization → [B, 4]
+#   - segmentation → [B, seg_classes, H, W]
+# Each task uses its own encoder (no sharing).
     def forward(self, x: torch.Tensor) -> dict:
-        """Forward pass for multi-task model.
-
-        Args:
-            x: Input tensor of shape [B, in_channels, H, W].
-        Returns:
-            A dict with keys:
-            - 'classification': [B, num_breeds] logits tensor.
-            - 'localization':   [B, 4] bounding box tensor.
-            - 'segmentation':   [B, seg_classes, H, W] segmentation logits tensor
-        """
-        # each encoder runs independently — no weight sharing
+        
         cls_out = self.cls_head(self.encoder_cls(x, return_features=False))
         loc_out = self.loc_head(self.encoder_loc(x, return_features=False))
 

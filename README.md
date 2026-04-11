@@ -13,7 +13,7 @@ Built a complete multi-task visual perception system on the Oxford-IIIT Pet data
 
 ## Links
 
-- **WandB Report:** https://wandb.ai/da25m017-indian-institute-of-technology-madras/da6401-assignment2/reports/Assignment-2--VmlldzoxNjQwOTUzOQ
+- **WandB Report:** [https://wandb.ai/da25m017-indian-institute-of-technology-madras/da6401-assignment2/reports/Assignment-2--VmlldzoxNjQwOTUzOQ](https://api.wandb.ai/links/da25m017-indian-institute-of-technology-madras/alek2i5x)
 - **GitHub Repo:** https://github.com/Mohmad-Yaqoob/da6401_assignment_2
 
 ## Project Structure
